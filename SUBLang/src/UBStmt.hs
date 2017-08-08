@@ -77,9 +77,6 @@ ppStmt = \ case
       S_obs e           -> "obs " ++ ppExpr e
       S_undef           -> "undef"
 
---undef :: Abs a
-undef = mzero
-
 absExpr :: Expr -> Abs N
 absExpr (E_plus e1 e2) = do
       n1 <- absExpr e1
@@ -146,7 +143,7 @@ concExpr (E_int n) = return n
 concExpr (E_ide x) = do
       s <- get
       return (load' x s)
-concExpr (E_choose e1 e2) = concExpr e1 `mplus` concExpr e2
+concExpr (E_choose e1 e2) = concExpr e1 +|+ concExpr e2
 
 concStmt :: Stmt -> RS ()
 concStmt (S_assign x e) = do
@@ -166,7 +163,7 @@ concStmt (S_seq s1 s2) = do
       concStmt s1
       concStmt s2
 
-abs = proj . runMaybeT . absStmt
+abs = proj . runUR . absStmt
 conc = proj . concStmt
 
 ex1 :: Stmt

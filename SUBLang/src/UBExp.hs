@@ -41,7 +41,6 @@ instance Arbitrary Expr where
                         , E_call <$> arb (n - 1)
                         ]
 
-
 pp :: Expr -> String
 pp e_ = case e_ of
       E_int n       -> show n
@@ -54,9 +53,6 @@ pp e_ = case e_ of
       E_call e      -> "#" ++ pp e
       E_undef x     -> x ++ "?"
       E_obs s       -> "(obs: " ++ s ++ ")"
-
--- undef :: Abs a
-undef = mzero
 
 evalAbs :: Expr -> Abs N
 evalAbs (E_int n) = return n
@@ -81,7 +77,7 @@ evalAbs (E_comma e1 e2) = do
       evalAbs e1
       seqpt
       evalAbs e2
-evalAbs (E_unit e) = (MaybeT . stepR . runR . runMaybeT . evalAbs) e
+evalAbs (E_unit e) = stepUR (runR (runUR (evalAbs e))) >>= maybe undef return
 evalAbs (E_call e) = do
       seqpt
       n <- evalAbs e
@@ -128,7 +124,7 @@ evalConc (E_obs o) = do
       modify (obs o)
       return 1
 
-abs = proj . runMaybeT . evalAbs
+abs = proj . runUR . evalAbs
 conc = proj . evalConc
 
 ex3 = E_comma
@@ -165,8 +161,12 @@ ub1 = E_comma
             (E_comma (E_obs "b") (E_unit $ E_call $ E_undef "x"))
       )
 
-
 ub2 = E_unit ( E_comma
             ( E_plus (E_obs "a") (E_int 0) )
             ( E_comma (E_undef "") (E_obs "a") )
+      )
+
+ub3 = E_unit ( E_plus
+            ( E_assign "y" (E_obs "a"))
+            ( E_call ( E_assign "x" (E_undef "y")))
       )
