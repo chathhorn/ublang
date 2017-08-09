@@ -1,11 +1,6 @@
-{-# LANGUAGE MultiParamTypeClasses
-      , FlexibleInstances
-      , ScopedTypeVariables
-      #-}
-
 module Main where
 
-import SUBLang
+import UBLang
 import qualified UBExp as E
 import qualified UBStmt as S
 import Test.Tasty

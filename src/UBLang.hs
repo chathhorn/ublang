@@ -1,29 +1,15 @@
-{-# LANGUAGE MultiParamTypeClasses
-      , FlexibleInstances
-      , FlexibleContexts
-      , ScopedTypeVariables
-      , UndecidableInstances
-      , LambdaCase
-      #-}
+{-# LANGUAGE FlexibleContexts, LambdaCase #-}
 
-module SUBLang where
+module UBLang where
 
 import Control.Applicative
 import Control.Monad.State
-import Control.Monad.Trans.Maybe
-import Data.Function
 import Data.Maybe
-import qualified Data.Foldable as F
 import Data.List.NonEmpty (NonEmpty(..), toList, groupAllWith1)
-import qualified Data.List.NonEmpty as NEL
 import Data.Semigroup
-import Data.Functor.Classes
 
-class StrongMonad m where
-      (+:+) :: m a -> m b -> m (a, b)
-
-(+|+) :: Alternative m => m a -> m a -> m a
-(+|+) = (<|>)
+import Resumption
+import qualified UndefResumption as U
 
 class Sto s where
       initial :: s
@@ -60,71 +46,7 @@ instance MonadPlus NonEmpty where
       mzero = undefined
       mplus = (<>)
 
-data R m a = Computed a | Resume (m (R m a))
-instance Monad m => Applicative (R m) where
-      pure = return
-      (<*>) = ap
-instance Monad m => Functor (R m) where
-      fmap f m = m >>= return . f
-instance Monad m => Monad (R m) where
-      return = Computed
-      Computed v >>= f = f v
-      Resume m >>= f = Resume (m >>= \r -> return (r >>= f))
-instance MonadTrans R where
-      lift m = Resume (fmap return m)
-instance MonadState s m => MonadState s (R m) where
-      state = stepR . state
-instance (Monad m, Alternative m) => Alternative (R m) where
-      empty = undefined
-      Resume m1 <|> Resume m2 = Resume (m1        <|> m2)
-      m1        <|> Resume m2 = Resume (return m1 <|> m2)
-      Resume m1 <|> m2        = Resume (m1        <|> return m2)
-      m1        <|> m2        = Resume (return m1 <|> return m2)
-instance (Monad m, Alternative m) => StrongMonad (R m) where
-      r1@(Resume m1) +:+ r2@(Resume m2) = Resume ((m1 >>= \r1' -> return (r1' +:+ r2)) <|> (m2 >>= \r2' -> return (r1 +:+ r2')))
-      r1             +:+ r2             = (r1 >>= \v1 -> r2 >>= \v2 -> return (v1, v2)) <|> (r2 >>= \v2 -> r1 >>= \v1 -> return (v1, v2))
-
-runR :: Monad m => R m a -> m a
-runR (Computed v) = return v
-runR (Resume m) = m >>= runR
-
-stepR :: Monad m => m a -> R m a
-stepR m = Resume (fmap Computed m)
-
-data UR m a = Undef | UComputed a | UResume (m (UR m a))
-instance Monad m => Applicative (UR m) where
-      pure = return
-      (<*>) = ap
-instance Monad m => Functor (UR m) where
-      fmap f m = m >>= return . f
-instance Monad m => Monad (UR m) where
-      return = UComputed
-      Undef       >>= _ = Undef
-      UComputed v >>= f = f v
-      UResume m   >>= f = UResume (m >>= \r -> return (r >>= f))
-instance MonadTrans UR where
-      lift m = UResume (fmap return m)
-instance MonadState s m => MonadState s (UR m) where
-      state = stepUR . state
-instance (Monad m, Alternative m) => Alternative (UR m) where
-      empty = Undef
-      UResume m1 <|> UResume m2 = UResume (m1        <|> m2)
-      m1         <|> UResume m2 = UResume (return m1 <|> m2)
-      UResume m1 <|> m2         = UResume (m1        <|> return m2)
-      m1         <|> m2         = UResume (return m1 <|> return m2)
-instance (Monad m, Alternative m) => StrongMonad (UR m) where
-      r1@(UResume m1) +:+ r2@(UResume m2) = UResume ((m1 >>= \r1' -> return (r1' +:+ r2)) <|> (m2 >>= \r2' -> return (r1 +:+ r2')))
-      r1              +:+ r2              = (r1 >>= \v1 -> r2 >>= \v2 -> return (v1, v2)) <|> (r2 >>= \v2 -> r1 >>= \v1 -> return (v1, v2))
-
-runUR :: Monad m => UR m a -> R m (Maybe a)
-runUR Undef         = return Nothing
-runUR (UComputed v) = return (Just v)
-runUR (UResume m)   = Resume (fmap runUR m)
-
-stepUR :: Monad m => m a -> UR m a
-stepUR m = UResume (fmap UComputed m)
-
-type Abs = UR (StateT S NonEmpty)
+type Abs = U.R (StateT S NonEmpty)
 type RS = R (StateT S NonEmpty)
 type N = Int
 type Ide = String
@@ -195,9 +117,9 @@ prune_top = id
 
 prune_minus :: Tree s (Maybe a) -> Tree s (Maybe a)
 prune_minus = \case
-      Branch s bs | F.any isUB bs    -> Branch s (return (Leaf Nothing))
-      Branch s bs                    -> Branch s (fmap prune_minus bs)
-      leaf                           -> leaf
+      Branch s bs | any isUB bs -> Branch s (return (Leaf Nothing))
+      Branch s bs               -> Branch s (fmap prune_minus bs)
+      leaf                      -> leaf
       where isUB = \case
                   Leaf Nothing       -> True
                   Branch _ (b :| []) -> isUB b
@@ -215,5 +137,5 @@ prune_bot t = if hasUB t then Leaf Nothing else t
 (<:) :: (Eq s, Eq a) => Tree s a -> Tree s (Maybe a) -> Bool
 _           <: Leaf Nothing   = True
 Leaf n      <: Leaf (Just n') = n == n'
-Branch s bs <: Branch s' bs'  = s == s' && all (or . flip fmap bs' . (<:)) bs
+Branch s bs <: Branch s' bs'  = s == s' && all (flip any bs' . (<:)) bs
 _           <: _              = False

@@ -1,18 +1,14 @@
-{-# LANGUAGE MultiParamTypeClasses
-      , FlexibleInstances
-      , ScopedTypeVariables
-      , UndecidableInstances
-      , LambdaCase
-      , DeriveGeneric
-      #-}
+{-# LANGUAGE DeriveGeneric, LambdaCase #-}
 
 module UBStmt where
 
 import UBLang
+import StrongMonad
+import Resumption
+import qualified UndefResumption as U
 import Test.QuickCheck
 import Control.Monad.State
-import Control.Monad.Trans.Either
-import GHC.Generics hiding (S, R)
+import GHC.Generics (Generic(..))
 
 data Expr = E_plus Expr Expr | E_minus Expr Expr | E_or Expr Expr | E_and Expr Expr
           | E_not Expr | E_int N | E_ide Ide | E_choose Expr Expr
@@ -77,10 +73,7 @@ ppStmt = \ case
       S_obs e           -> "obs " ++ ppExpr e
       S_undef           -> "undef"
 
-undef :: String -> R Abs a
-undef = Resume . lift . EitherT . return . Left
-
-absExpr :: Expr -> R Abs N
+absExpr :: Expr -> Abs N
 absExpr (E_plus e1 e2) = do
       n1 <- absExpr e1
       n2 <- absExpr e2
@@ -106,11 +99,11 @@ absExpr (E_ide x) = do
       return (load' x s)
 absExpr (E_choose e1 e2) = absExpr e1 +|+ absExpr e2
 
-absStmt :: Stmt -> R Abs ()
+absStmt :: Stmt -> Abs ()
 absStmt (S_assign x e) = do
       n <- absExpr e
       modify (store' x n)
-absStmt S_undef = undef "Undef stmt."
+absStmt S_undef = undef
 absStmt (S_obs e) = do
       n <- absExpr e
       modify (obs (show n))
@@ -122,7 +115,7 @@ absStmt (S_seq s1 s2) = do
       absStmt s1
       absStmt s2
 
-concExpr :: Expr -> R Conc N
+concExpr :: Expr -> RS N
 concExpr (E_plus e1 e2) = do
       n1 <- concExpr e1
       n2 <- concExpr e2
@@ -148,7 +141,7 @@ concExpr (E_ide x) = do
       return (load' x s)
 concExpr (E_choose e1 e2) = concExpr e1 +|+ concExpr e2
 
-concStmt :: Stmt -> R Conc ()
+concStmt :: Stmt -> RS ()
 concStmt (S_assign x e) = do
       n <- concExpr e
       modify (store' x n)
@@ -166,8 +159,8 @@ concStmt (S_seq s1 s2) = do
       concStmt s1
       concStmt s2
 
-abs = aproj . absStmt
-conc = cproj . concStmt
+abs = proj . U.runUR . absStmt
+conc = proj . concStmt
 
 ex1 :: Stmt
 ex1 = S_seq
