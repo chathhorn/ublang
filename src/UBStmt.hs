@@ -2,13 +2,15 @@
 
 module UBStmt where
 
-import UBLang
-import StrongMonad
 import Resumption
+import StrongMonad
+import UBLang
+
+import Control.Monad.State
+import Data.Types.Injective
+import GHC.Generics (Generic)
 import qualified UndefResumption as U
 import Test.QuickCheck
-import Control.Monad.State
-import GHC.Generics (Generic(..))
 
 data Expr = E_plus Expr Expr | E_minus Expr Expr | E_or Expr Expr | E_and Expr Expr
           | E_not Expr | E_int N | E_ide Ide | E_choose Expr Expr
@@ -159,7 +161,10 @@ concStmt (S_seq s1 s2) = do
       concStmt s1
       concStmt s2
 
-abs = proj . U.runUR . absStmt
+abs :: Stmt -> Tree S (Maybe ())
+abs = proj . to . absStmt
+
+conc :: Stmt -> Tree S ()
 conc = proj . concStmt
 
 ex1 :: Stmt

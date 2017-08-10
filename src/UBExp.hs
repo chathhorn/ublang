@@ -2,13 +2,15 @@
 
 module UBExp where
 
-import UBLang
-import StrongMonad
 import Resumption
+import StrongMonad
+import UBLang
+
+import Control.Monad.State
+import Data.Types.Injective
+import GHC.Generics (Generic)
 import qualified UndefResumption as U
 import Test.QuickCheck
-import Control.Monad.State
-import GHC.Generics (Generic(..))
 
 data Expr = E_int N | E_ide Ide | E_assign Ide Expr | E_plus Expr Expr
           | E_neg Expr | E_comma Expr Expr | E_unit Expr | E_call Expr
@@ -74,7 +76,9 @@ evalAbs (E_comma e1 e2) = do
       evalAbs e1
       seqpt
       evalAbs e2
-evalAbs (E_unit e) = U.stepR (runR (U.runUR (evalAbs e))) >>= maybe undef return
+evalAbs (E_unit e) = (to' . stepR . runR . to . evalAbs) e
+      where to' :: RS (Maybe N) -> Abs N
+            to' = to
 evalAbs (E_call e) = do
       seqpt
       n <- evalAbs e
@@ -121,7 +125,10 @@ evalConc (E_obs o) = do
       modify (obs o)
       return 1
 
-abs = proj . U.runUR . evalAbs
+abs :: Expr -> Tree S (Maybe N)
+abs = proj . to . evalAbs
+
+conc :: Expr -> Tree S N
 conc = proj . evalConc
 
 ex3 = E_comma

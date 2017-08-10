@@ -2,11 +2,13 @@
       , FlexibleInstances
       , UndecidableInstances
       #-}
+
 module UndefResumption where
 
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Applicative
+import Data.Types.Injective
 
 import StrongMonad
 import qualified Resumption as R
@@ -25,7 +27,7 @@ instance Monad m => Monad (R m) where
 instance MonadTrans R where
       lift m = Resume (fmap return m)
 instance MonadState s m => MonadState s (R m) where
-      state = stepR . state
+      state = (Resume . fmap Computed) . state
 instance (Monad m, Alternative m) => Alternative (R m) where
       empty = Undef
       Resume m1 <|> Resume m2 = Resume (m1        <|> m2)
@@ -36,10 +38,12 @@ instance (Monad m, Alternative m) => StrongMonad (R m) where
       r1@(Resume m1) +:+ r2@(Resume m2) = Resume ((m1 >>= \r1' -> return (r1' +:+ r2)) <|> (m2 >>= \r2' -> return (r1 +:+ r2')))
       r1             +:+ r2             = (r1 >>= \v1 -> r2 >>= \v2 -> return (v1, v2)) <|> (r2 >>= \v2 -> r1 >>= \v1 -> return (v1, v2))
 
-runUR :: Monad m => R m a -> R.R m (Maybe a)
-runUR Undef        = return Nothing
-runUR (Computed v) = return (Just v)
-runUR (Resume m)   = R.Resume (fmap runUR m)
+instance Functor m => Injective (R.R m (Maybe a)) (R m a) where
+      to (R.Computed Nothing)  = Undef
+      to (R.Computed (Just v)) = Computed v
+      to (R.Resume m)          = Resume (fmap to m)
 
-stepR :: Monad m => m a -> R m a
-stepR m = Resume (fmap Computed m)
+instance Functor m => Injective (R m a) (R.R m (Maybe a)) where
+      to Undef        = R.Computed Nothing
+      to (Computed v) = R.Computed (Just v)
+      to (Resume m)   = R.Resume (fmap to m)

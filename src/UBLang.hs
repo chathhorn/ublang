@@ -86,14 +86,14 @@ label :: Tree s a -> Either s a
 label (Branch s _) = Left s
 label (Leaf a) = Right a
 
-runRS :: S -> RS a -> Tree S a
-runRS s = \case
-      Resume p    -> Branch s (run' p)
+unfold :: S -> RS a -> Tree S a
+unfold s = \case
+      Resume p    -> Branch s (unfold' p)
       Computed a  -> Branch s (Leaf a :| [])
-      where run' = fmap (uncurry (flip runRS)) . flip runStateT s
+      where unfold' = fmap (uncurry $ flip unfold) . flip runStateT s
 
 proj :: Ord a => RS a -> Tree S a
-proj = merge . shrink . runRS initial
+proj = merge . shrink . unfold initial
 
 shrink :: (Eq s, Ord a) => Tree s a -> Tree s a
 shrink (Leaf n)      = Leaf n

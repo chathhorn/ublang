@@ -2,6 +2,7 @@
       , FlexibleInstances
       , UndecidableInstances
       #-}
+
 module Resumption where
 
 import Control.Monad.Trans
