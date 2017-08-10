@@ -5,13 +5,14 @@
 
 module UndefResumption where
 
-import Control.Monad.Trans
-import Control.Monad.State
-import Control.Applicative
-import Data.Types.Injective
-
-import StrongMonad
 import qualified Resumption as R
+import Resumption (Resumption(..))
+import StrongMonad
+
+import Control.Applicative
+import Control.Monad.State
+import Control.Monad.Trans
+import Data.Types.Injective
 
 data R m a = Undef | Computed a | Resume (m (R m a))
 instance Monad m => Applicative (R m) where
@@ -47,3 +48,9 @@ instance Functor m => Injective (R m a) (R.R m (Maybe a)) where
       to Undef        = R.Computed Nothing
       to (Computed v) = R.Computed (Just v)
       to (Resume m)   = R.Resume (fmap to m)
+
+instance Resumption R a (Maybe a) where
+      runR = runR . (to :: Functor m => R m a -> R.R m (Maybe a))
+      stepR = (to :: Functor m => R.R m (Maybe a) -> R m a) . stepR
+      proj = proj . (to :: Functor m => R m a -> R.R m (Maybe a))
+

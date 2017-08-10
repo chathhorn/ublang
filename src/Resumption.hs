@@ -1,15 +1,21 @@
 {-# LANGUAGE MultiParamTypeClasses
       , FlexibleInstances
+      , FlexibleContexts
       , UndecidableInstances
+      , FunctionalDependencies
+      , LambdaCase
       #-}
 
 module Resumption where
 
+import Store
+import StrongMonad
+
+import Control.Applicative
 import Control.Monad.Trans
 import Control.Monad.State
-import Control.Applicative
-
-import StrongMonad
+import Data.List.NonEmpty (NonEmpty(..), toList, groupAllWith1)
+import Data.Types.Injective
 
 data R m a = Computed a | Resume (m (R m a))
 instance Monad m => Applicative (R m) where
@@ -35,10 +41,53 @@ instance (Monad m, Alternative m) => StrongMonad (R m) where
       r1@(Resume m1) +:+ r2@(Resume m2) = Resume ((m1 >>= \r1' -> return (r1' +:+ r2)) <|> (m2 >>= \r2' -> return (r1 +:+ r2')))
       r1             +:+ r2             = (r1 >>= \v1 -> r2 >>= \v2 -> return (v1, v2)) <|> (r2 >>= \v2 -> r1 >>= \v1 -> return (v1, v2))
 
-runR :: Monad m => R m a -> m a
-runR (Computed v) = return v
-runR (Resume m) = m >>= runR
+data Tree s a = Branch !s !(NonEmpty (Tree s a)) | Leaf !a
+      deriving (Eq, Ord)
 
-stepR :: Monad m => m a -> R m a
-stepR m = Resume (fmap Computed m)
+instance (Show s, Show a) => Show (Tree s a) where
+      show = \case
+            Branch s bs | show s == "" -> "Br " ++ show (toList bs)
+            Branch s bs                -> "Br " ++ show s ++ " " ++ show (toList bs)
+            Leaf n                     -> show n
 
+children :: Tree s a -> [Tree s a]
+children (Branch _ (b :| bs)) = b : bs
+children _ = []
+
+label :: Tree s a -> Either s a
+label (Branch s _) = Left s
+label (Leaf a) = Right a
+
+class Resumption r a b | r b -> a where
+      runR :: Monad m => r m a -> m b
+      stepR :: Monad m => m b -> r m a
+      proj :: Ord a => r StL a -> Tree S b
+
+instance Resumption R a a where
+      runR (Computed v) = return v
+      runR (Resume m)   = m >>= runR
+      stepR = Resume . fmap Computed
+      proj = merge . shrink . unfold initial . to
+
+unfold :: S -> R StL a -> Tree S a
+unfold s = \case
+      Resume p    -> Branch s (unfold' p)
+      Computed a  -> Branch s (Leaf a :| [])
+      where unfold' = fmap (uncurry $ flip unfold) . flip runStateT s
+
+shrink :: (Eq s, Ord a) => Tree s a -> Tree s a
+shrink (Leaf n)      = Leaf n
+shrink (Branch s bs) = Branch s (shrink' s (Branch s bs))
+      where shrink' :: (Eq s, Ord a) => s -> Tree s a -> NonEmpty (Tree s a)
+            shrink' s = \case
+                  Branch s' bs | s == s' -> join $ fmap (shrink' s) bs
+                  Branch s' bs           -> return (Branch s' (join $ fmap (shrink' s') bs))
+                  Leaf n                 -> return (Leaf n)
+
+-- Merges subtrees with common prefix.
+merge :: (Ord s, Ord a) => Tree s a -> Tree s a
+merge (Leaf n)      = Leaf n
+merge (Branch s bs) = Branch s (fmap merge' (groupAllWith1 label bs))
+      where merge' :: (Ord s, Ord a) => NonEmpty (Tree s a) -> Tree s a
+            merge' (Branch s (b :| bs) :| bs') = merge $ Branch s (b :| bs ++ join (fmap children bs'))
+            merge' (b :| _)                    = b

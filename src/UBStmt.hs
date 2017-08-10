@@ -3,11 +3,11 @@
 module UBStmt where
 
 import Resumption
+import Store
 import StrongMonad
 import UBLang
 
 import Control.Monad.State
-import Data.Types.Injective
 import GHC.Generics (Generic)
 import qualified UndefResumption as U
 import Test.QuickCheck
@@ -75,7 +75,7 @@ ppStmt = \ case
       S_obs e           -> "obs " ++ ppExpr e
       S_undef           -> "undef"
 
-absExpr :: Expr -> Abs N
+absExpr :: Expr -> U.R StL N
 absExpr (E_plus e1 e2) = do
       n1 <- absExpr e1
       n2 <- absExpr e2
@@ -101,7 +101,7 @@ absExpr (E_ide x) = do
       return (load' x s)
 absExpr (E_choose e1 e2) = absExpr e1 +|+ absExpr e2
 
-absStmt :: Stmt -> Abs ()
+absStmt :: Stmt -> U.R StL ()
 absStmt (S_assign x e) = do
       n <- absExpr e
       modify (store' x n)
@@ -117,7 +117,7 @@ absStmt (S_seq s1 s2) = do
       absStmt s1
       absStmt s2
 
-concExpr :: Expr -> RS N
+concExpr :: Expr -> R StL N
 concExpr (E_plus e1 e2) = do
       n1 <- concExpr e1
       n2 <- concExpr e2
@@ -143,7 +143,7 @@ concExpr (E_ide x) = do
       return (load' x s)
 concExpr (E_choose e1 e2) = concExpr e1 +|+ concExpr e2
 
-concStmt :: Stmt -> RS ()
+concStmt :: Stmt -> R StL ()
 concStmt (S_assign x e) = do
       n <- concExpr e
       modify (store' x n)
@@ -162,7 +162,7 @@ concStmt (S_seq s1 s2) = do
       concStmt s2
 
 abs :: Stmt -> Tree S (Maybe ())
-abs = proj . to . absStmt
+abs = proj . absStmt
 
 conc :: Stmt -> Tree S ()
 conc = proj . concStmt

@@ -3,11 +3,11 @@
 module UBExp where
 
 import Resumption
+import Store
 import StrongMonad
 import UBLang
 
 import Control.Monad.State
-import Data.Types.Injective
 import GHC.Generics (Generic)
 import qualified UndefResumption as U
 import Test.QuickCheck
@@ -53,7 +53,7 @@ pp e_ = case e_ of
       E_undef x     -> x ++ "?"
       E_obs s       -> "(obs: " ++ s ++ ")"
 
-evalAbs :: Expr -> Abs N
+evalAbs :: Expr -> U.R StL N
 evalAbs (E_int n) = return n
 evalAbs (E_ide x) = do
       s <- get
@@ -76,9 +76,7 @@ evalAbs (E_comma e1 e2) = do
       evalAbs e1
       seqpt
       evalAbs e2
-evalAbs (E_unit e) = (to' . stepR . runR . to . evalAbs) e
-      where to' :: RS (Maybe N) -> Abs N
-            to' = to
+evalAbs (E_unit e) = ((stepR :: Monad m => m (Maybe a) -> U.R m a) . runR . evalAbs) e
 evalAbs (E_call e) = do
       seqpt
       n <- evalAbs e
@@ -91,7 +89,7 @@ evalAbs (E_obs o) = do
       modify (obs o :: S -> S)
       return 1
 
-evalConc :: Expr -> RS N
+evalConc :: Expr -> R StL N
 evalConc (E_int n) = return n
 evalConc (E_ide x) = do
       s <- get
@@ -114,7 +112,7 @@ evalConc (E_comma e1 e2) = do
       evalConc e1
       seqpt
       evalConc e2
-evalConc (E_unit e) = stepR (runR (evalConc e))
+evalConc (E_unit e) = ((stepR :: Monad m => m a -> R m a) . runR . evalConc) e
 evalConc (E_call e) = do
       seqpt
       n <- evalConc e
@@ -126,7 +124,7 @@ evalConc (E_obs o) = do
       return 1
 
 abs :: Expr -> Tree S (Maybe N)
-abs = proj . to . evalAbs
+abs = proj . evalAbs
 
 conc :: Expr -> Tree S N
 conc = proj . evalConc
