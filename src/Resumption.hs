@@ -41,7 +41,7 @@ instance (Monad m, Alternative m) => StrongMonad (R m) where
       r1@(Resume m1) +:+ r2@(Resume m2) = Resume ((m1 >>= \r1' -> return (r1' +:+ r2)) <|> (m2 >>= \r2' -> return (r1 +:+ r2')))
       r1             +:+ r2             = (r1 >>= \v1 -> r2 >>= \v2 -> return (v1, v2)) <|> (r2 >>= \v2 -> r1 >>= \v1 -> return (v1, v2))
 
-data Tree s a = Branch !s !(NonEmpty (Tree s a)) | Leaf !a
+data Tree s a = Leaf !a | Branch !s !(NonEmpty (Tree s a))
       deriving (Eq, Ord)
 
 instance (Show s, Show a) => Show (Tree s a) where
