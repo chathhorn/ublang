@@ -1,0 +1,9 @@
+n := 2;
+x := 0 +|+ 1;
+obs 10;
+if (! x) undef;
+while (n) {
+	obs x;
+	n := n - 1;
+}
+
